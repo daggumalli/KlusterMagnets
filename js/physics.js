@@ -84,33 +84,43 @@ const Physics = (function () {
   // PHYSICAL CONSTANTS (tuned for pixel-space simulation)
   // ================================================================
   // Scale: 1 pixel ≈ 1 mm. Arena radius ≈ 155px ≈ 15.5cm.
-  // Real Kluster magnets: ~3cm long, ~12g, neodymium.
+  // Real Kluster magnets: ~3cm long, ~12g, neodymium N52.
+  //
+  // Real neodymium magnets interact visibly from ~8-10cm on a smooth surface.
+  // That's roughly 2/3 of the arena radius. We tune k so that:
+  //   - At ~100px (~2/3 arena): magnets start to slowly drift
+  //   - At ~70px: noticeable sliding
+  //   - At ~40px: fast snap together
+  //   - At ~30px: very strong pull, unavoidable cluster
 
   const MASS = 12;                    // magnet mass (grams, arbitrary units)
   const MOMENT_OF_INERTIA = 10;      // I = (1/12) · m · L² for a rod
 
-  // Effective gravity for Coulomb friction on a flat surface.
-  // Real: g=9.8 m/s². In our units, we tune this so that:
-  //   Static friction threshold ≈ 80-100 force units
-  //   → magnets within ~50px start drifting, within ~30px snap hard
-  const GRAVITY = 18;
-  const MU_KINETIC = 0.28;           // kinetic friction (wood/cloth surface)
-  const MU_STATIC  = 0.35;           // static friction (higher, prevents jitter)
-  const MU_ANGULAR = 0.12;           // angular friction coefficient
+  // Effective gravity for Coulomb friction.
+  // Static friction threshold = μ*1.2 * m * g = 0.30*1.2*12*22 = 95
+  // This means magnets need > 95 force units to start sliding.
+  const GRAVITY = 22;
+  const MU_KINETIC = 0.30;           // kinetic friction (wood/cloth surface)
+  const MU_STATIC  = 0.36;           // static friction (higher, prevents jitter)
+  const MU_ANGULAR = 0.15;           // angular friction coefficient
 
-  const MAX_FORCE = 500;             // cap to prevent numerical explosion at r→0
-  const MAX_TORQUE = 250;            // torque cap
-  const MAX_VELOCITY = 180;          // px/s safety cap
-  const MAX_OMEGA = 15;              // rad/s angular velocity cap
-  const VELOCITY_EPSILON = 0.2;      // below this, magnet is "stopped"
-  const OMEGA_EPSILON = 0.02;        // below this, rotation is "stopped"
+  const MAX_FORCE = 2000;            // cap to prevent explosion at very close range
+  const MAX_TORQUE = 800;            // torque cap
+  const MAX_VELOCITY = 250;          // px/s safety cap
+  const MAX_OMEGA = 20;              // rad/s angular velocity cap
+  const VELOCITY_EPSILON = 0.3;      // below this, magnet is "stopped"
+  const OMEGA_EPSILON = 0.03;        // below this, rotation is "stopped"
 
-  // Derived thresholds
-  // Static friction force: μ_s · m · g = 0.35 · 12 · 18 = 75.6 force units
-  // Kinetic friction decel: μ_k · g = 0.28 · 18 = 5.04 px/s²
-  // At r=50px with k=120M: F_max = 6·120M/50⁴ = 6·120M/6.25M = 115 > 75.6 → slides ✓
-  // At r=70px with k=120M: F_max = 6·120M/70⁴ = 6·120M/24.01M = 30 < 75.6 → stays ✓
-  // At r=35px with k=120M: F_max = 6·120M/35⁴ = 6·120M/1.5M = 480 → strong snap ✓
+  // Derived thresholds with k=2e9 (2 billion):
+  // Static friction force: μ*1.2 * m * g = 0.30*1.2*12*22 = 95 force units
+  // Kinetic friction decel: μ * g = 0.30 * 22 = 6.6 px/s²
+  //
+  // Force at distance (max dipole factor = ±2):
+  //   r=100: F = 6·2e9/1e8    = 120 > 95  → starts drifting ✓
+  //   r=80:  F = 6·2e9/4.1e7  = 293       → clear sliding ✓
+  //   r=60:  F = 6·2e9/1.3e7  = 923       → fast pull ✓
+  //   r=40:  F = 6·2e9/2.56e6 = 4687→cap  → strong snap ✓
+  //   r=110: F = 6·2e9/1.46e8 = 82 < 95   → stays put ✓
 
   // Physics sub-stepping for stability
   const SUB_STEPS = 3;
@@ -309,21 +319,22 @@ const Physics = (function () {
         // --- ANGULAR DYNAMICS ---
         // τ = I·α → α = τ/I
         var angAccel = forces[mi].torque / MOMENT_OF_INERTIA;
-        var absOmega = Math.abs(m.omega);
         var torqueMag = Math.abs(forces[mi].torque);
 
-        // Static angular friction
-        var angStaticThreshold = mu * 1.2 * mass * GRAVITY * 0.05;
-        if (absOmega < OMEGA_EPSILON && torqueMag < angStaticThreshold) {
+        // Static angular friction: won't rotate unless torque exceeds threshold
+        var angStaticThreshold = mu * mass * GRAVITY * 0.1;
+        if (Math.abs(m.omega) < OMEGA_EPSILON && torqueMag < angStaticThreshold) {
           m.omega = 0;
         } else {
+          // Apply torque acceleration
           m.omega += angAccel * subDt;
 
-          // Angular kinetic friction
-          if (absOmega > OMEGA_EPSILON) {
+          // Angular kinetic friction (must use UPDATED omega, not stale value)
+          var updatedAbsOmega = Math.abs(m.omega);
+          if (updatedAbsOmega > OMEGA_EPSILON) {
             var angFriction = MU_ANGULAR * GRAVITY;
             var maxAngFric = angFriction * subDt;
-            if (maxAngFric > absOmega) {
+            if (maxAngFric > updatedAbsOmega) {
               m.omega = 0;
             } else {
               m.omega -= Math.sign(m.omega) * maxAngFric;
