@@ -2,102 +2,123 @@
 
 const AI = (function () {
   function randomArenaPosition(arenaRadius) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * (arenaRadius - CONFIG.MAGNET_RADIUS);
+    // Uniform distribution within circle
+    var angle = Math.random() * Math.PI * 2;
+    var r = Math.sqrt(Math.random()) * (arenaRadius - CONFIG.MAGNET_RADIUS * 1.5);
     return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
   }
 
   function simulatePlacement(testX, testY, testTheta, magnets, levelConfig) {
-    const testMagnet = Physics.createMagnet(-1, "ai", testX, testY, testTheta, 1.0);
+    var testMagnet = Physics.createMagnet(-1, "ai", testX, testY, testTheta, 1.0);
     testMagnet.state = "placed";
 
-    const simMagnets = magnets
-      .filter(m => m.state === "placed")
-      .map(m => ({ ...m, prevX: m.x, prevY: m.y }));
-    simMagnets.push({ ...testMagnet, prevX: testX, prevY: testY });
+    var placed = magnets.filter(function(m) { return m.state === "placed"; });
+    var simMagnets = placed.map(function(m) {
+      return {
+        id: m.id, team: m.team, x: m.x, y: m.y, prevX: m.x, prevY: m.y,
+        vx: m.vx, vy: m.vy, theta: m.theta, omega: m.omega,
+        strength: m.strength, state: "placed", clusterGroup: -1, mass: m.mass,
+      };
+    });
+    simMagnets.push({
+      id: -1, team: "ai", x: testX, y: testY, prevX: testX, prevY: testY,
+      vx: 0, vy: 0, theta: testTheta, omega: 0,
+      strength: 1.0, state: "placed", clusterGroup: -1, mass: 12,
+    });
 
-    const steps = Math.floor(levelConfig.simSteps / 3);
-    const arenaCenter = { x: 0, y: 0 };
-    for (let i = 0; i < steps; i++) {
+    // Simulate for a short time to see if cluster forms
+    var steps = Math.floor(levelConfig.simSteps / 3);
+    var arenaCenter = { x: 0, y: 0 };
+    for (var i = 0; i < steps; i++) {
       Physics.step(simMagnets, levelConfig, arenaCenter, CONFIG.PHYSICS_DT);
     }
 
-    const clusters = Physics.findClusters(simMagnets, levelConfig);
-    const causedCluster = clusters.length > 0;
-
-    return { causedCluster, simMagnets };
+    var clusters = Physics.findClusters(simMagnets, levelConfig);
+    return { causedCluster: clusters.length > 0, simMagnets: simMagnets };
   }
 
   function scorePosition(x, y, magnets, levelConfig) {
-    const placed = magnets.filter(m => m.state === "placed");
-    let score = 0;
+    var placed = magnets.filter(function(m) { return m.state === "placed"; });
+    var score = 0;
 
-    let minDist = Infinity;
-    for (const m of placed) {
-      const dx = x - m.x;
-      const dy = y - m.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+    // PRIMARY: Maximize minimum distance from ALL existing magnets
+    // This is the key strategy — stay as far away as possible
+    var minDist = Infinity;
+    for (var i = 0; i < placed.length; i++) {
+      var dx = x - placed[i].x;
+      var dy = y - placed[i].y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < minDist) minDist = dist;
     }
-    score += minDist * 0.5;
+    // Strong weight on staying far from others
+    score += minDist * 2.0;
 
-    const centerDist = Math.sqrt(x * x + y * y);
-    score += (levelConfig.arenaRadius - centerDist) * 0.3;
+    // SECONDARY: Prefer staying inside the arena (not too close to edge)
+    var centerDist = Math.sqrt(x * x + y * y);
+    var edgeDist = levelConfig.arenaRadius - centerDist - CONFIG.MAGNET_RADIUS;
+    if (edgeDist < 20) {
+      // Penalize being too close to edge (hard to play from there)
+      score -= (20 - edgeDist) * 0.5;
+    }
 
-    let trapScore = 0;
-    for (const m of placed) {
-      if (m.team === "player") continue;
-      const dx = x - m.x;
-      const dy = y - m.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > CONFIG.MAGNET_RADIUS * 3 && dist < levelConfig.magneticRange * 0.8) {
-        trapScore += 1.0;
+    // BONUS: Extra points for being far from player magnets specifically
+    // (creates traps where player must place near AI magnets)
+    for (var j = 0; j < placed.length; j++) {
+      if (placed[j].team === "player") {
+        var pdx = x - placed[j].x;
+        var pdy = y - placed[j].y;
+        var pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        // Reward being at medium range from player magnets (creates danger zone)
+        if (pdist > 60 && pdist < levelConfig.magneticRange * 0.7) {
+          score += 10;
+        }
       }
     }
-    score += trapScore * 0.2;
 
     return score;
   }
 
   function choosePosition(magnets, levelConfig) {
-    const numCandidates = levelConfig.aiCandidates;
-    const noise = levelConfig.aiNoise;
-    const candidates = [];
+    var numCandidates = levelConfig.aiCandidates;
+    var noise = levelConfig.aiNoise;
+    var candidates = [];
 
-    for (let i = 0; i < numCandidates; i++) {
-      const pos = randomArenaPosition(levelConfig.arenaRadius);
-      const theta = Math.random() * Math.PI * 2;
+    for (var i = 0; i < numCandidates; i++) {
+      var pos = randomArenaPosition(levelConfig.arenaRadius);
+      var theta = Math.random() * Math.PI * 2;
 
-      const result = simulatePlacement(pos.x, pos.y, theta, magnets, levelConfig);
+      var result = simulatePlacement(pos.x, pos.y, theta, magnets, levelConfig);
 
       if (!result.causedCluster) {
-        const score = scorePosition(pos.x, pos.y, magnets, levelConfig);
-        const noisyScore = score * (1 + (Math.random() - 0.5) * 2 * noise);
-        candidates.push({ x: pos.x, y: pos.y, theta, score: noisyScore });
+        var score = scorePosition(pos.x, pos.y, magnets, levelConfig);
+        var noisyScore = score * (1 + (Math.random() - 0.5) * 2 * noise);
+        candidates.push({ x: pos.x, y: pos.y, theta: theta, score: noisyScore });
       }
     }
 
+    // Fallback: if all placements cause clusters, find the farthest spot
     if (candidates.length === 0) {
-      let bestPos = randomArenaPosition(levelConfig.arenaRadius);
-      let bestDist = 0;
-      for (let i = 0; i < 20; i++) {
-        const pos = randomArenaPosition(levelConfig.arenaRadius);
-        let minDist = Infinity;
-        for (const m of magnets.filter(m => m.state === "placed")) {
-          const dx = pos.x - m.x;
-          const dy = pos.y - m.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) minDist = dist;
+      var bestPos = randomArenaPosition(levelConfig.arenaRadius);
+      var bestDist = 0;
+      for (var fi = 0; fi < 30; fi++) {
+        var fpos = randomArenaPosition(levelConfig.arenaRadius);
+        var fminDist = Infinity;
+        var fplaced = magnets.filter(function(m) { return m.state === "placed"; });
+        for (var fj = 0; fj < fplaced.length; fj++) {
+          var fdx = fpos.x - fplaced[fj].x;
+          var fdy = fpos.y - fplaced[fj].y;
+          var fdist = Math.sqrt(fdx * fdx + fdy * fdy);
+          if (fdist < fminDist) fminDist = fdist;
         }
-        if (minDist > bestDist) {
-          bestDist = minDist;
-          bestPos = pos;
+        if (fminDist > bestDist) {
+          bestDist = fminDist;
+          bestPos = fpos;
         }
       }
-      return { x: bestPos.x, y: bestPos.y, theta: 0, candidates: [] };
+      return { x: bestPos.x, y: bestPos.y, theta: Math.random() * Math.PI * 2, candidates: [] };
     }
 
-    candidates.sort((a, b) => b.score - a.score);
+    candidates.sort(function(a, b) { return b.score - a.score; });
 
     return {
       x: candidates[0].x,
@@ -107,5 +128,5 @@ const AI = (function () {
     };
   }
 
-  return { choosePosition, randomArenaPosition };
+  return { choosePosition: choosePosition, randomArenaPosition: randomArenaPosition };
 })();

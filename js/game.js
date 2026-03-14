@@ -294,7 +294,7 @@ const Game = (function () {
     }
 
     if (state === S.SETTLING) {
-      var simDt = settleSlowMo ? CONFIG.PHYSICS_DT * CONFIG.SLOW_MOTION_FACTOR : CONFIG.PHYSICS_DT;
+      var simDt = CONFIG.PHYSICS_DT;
       var maxVel = Physics.step(magnets, levelConfig, { x: 0, y: 0 }, simDt);
 
       Audio.slideUpdate(maxVel);

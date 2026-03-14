@@ -3,11 +3,11 @@
 const CONFIG = {
   MAGNET_RADIUS: 18,
   CLUSTER_THRESHOLD_FACTOR: 2.1,
-  SETTLE_VELOCITY_THRESHOLD: 0.1,
-  SETTLE_TIMEOUT_MS: 8000,
+  SETTLE_VELOCITY_THRESHOLD: 0.5,
+  SETTLE_TIMEOUT_MS: 5000,
   PHYSICS_DT: 1 / 60,
   SLOW_MOTION_FACTOR: 0.5,
-  PLACEMENT_VIBRATION_IMPULSE: 0.3,
+  PLACEMENT_VIBRATION_IMPULSE: 3,
   ARENA_PADDING: 40,
   FIELD_OPACITY_MIN: 0.03,
   FIELD_OPACITY_MAX: 0.05,
@@ -27,16 +27,23 @@ const CONFIG = {
   LEVELS: [
     {
       id: 1, name: "Rookie", description: "Learn the basics of magnetic placement",
-      magnetsEach: 4, arenaRadius: 155, magneticK: 80000, surfaceFriction: 0.92,
+      magnetsEach: 4, arenaRadius: 155,
+      // CORRECT r⁴ dipole physics. Force = 3k·f(θ)/r⁴
+      // At r=50: F_max = 6·120M/6.25M  = 115 → accel 9.6  (gentle drift)
+      // At r=40: F_max = 6·120M/2.56M  = 281 → accel 23.4 (noticeable pull)
+      // At r=30: F_max = 6·120M/810000 = 889 → capped 500  (strong snap)
+      // Static friction threshold: 0.28·1.2·12·18 = 72.6
+      magneticK: 120000000, surfaceFriction: 0.28,
       magnetMassVariance: 0, surfaceImperfection: 0, polarityRandomization: 0,
-      magneticRange: 140, simSteps: 120, aiCandidates: 52, aiNoise: 0.5,
+      magneticRange: 150, simSteps: 120, aiCandidates: 80, aiNoise: 0.4,
       aiThinkTime: 1500, isTutorial: true,
     },
     {
       id: 2, name: "Novice", description: "Stronger pull, smarter opponent",
-      magnetsEach: 5, arenaRadius: 145, magneticK: 120000, surfaceFriction: 0.90,
+      magnetsEach: 5, arenaRadius: 145,
+      magneticK: 180000000, surfaceFriction: 0.24,
       magnetMassVariance: 0.05, surfaceImperfection: 0.2, polarityRandomization: 0.15,
-      magneticRange: 160, simSteps: 140, aiCandidates: 58, aiNoise: 0.4,
+      magneticRange: 170, simSteps: 140, aiCandidates: 90, aiNoise: 0.3,
       aiThinkTime: 1200, isTutorial: false,
     },
   ],
