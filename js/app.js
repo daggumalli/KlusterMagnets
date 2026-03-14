@@ -36,8 +36,12 @@
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
 
-    Game.update(dt);
-    Game.render(ctx, W, H, sc);
+    try {
+      Game.update(dt);
+      Game.render(ctx, W, H, sc);
+    } catch (e) {
+      console.error("Game loop error:", e);
+    }
 
     requestAnimationFrame(loop);
   }

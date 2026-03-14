@@ -66,9 +66,7 @@ const AI = (function () {
 
     for (let i = 0; i < numCandidates; i++) {
       const pos = randomArenaPosition(levelConfig.arenaRadius);
-      const theta = levelConfig.polarityRandomization > 0
-        ? (Math.random() - 0.5) * 2 * levelConfig.polarityRandomization
-        : 0;
+      const theta = Math.random() * Math.PI * 2;
 
       const result = simulatePlacement(pos.x, pos.y, theta, magnets, levelConfig);
 

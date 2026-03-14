@@ -126,9 +126,9 @@ const Game = (function () {
         dragActive = true;
         dragX = arena.x;
         dragY = arena.y;
-        var theta = levelConfig.polarityRandomization > 0
-          ? (Math.random() - 0.5) * 2 * levelConfig.polarityRandomization
-          : 0;
+        // Every magnet gets a random orientation (like dropping a real magnet on a table)
+        // polarityRandomization adds extra unpredictability at higher levels
+        var theta = Math.random() * Math.PI * 2;
         ghostMagnet = Physics.createMagnet(-1, "player", arena.x, arena.y, theta, 1.0);
         state = S.PLACING;
       }
@@ -268,6 +268,30 @@ const Game = (function () {
 
   function update(dt) {
     time += dt;
+
+    // Run physics continuously whenever magnets are on the board
+    // This keeps magnetic attraction/repulsion visible at all times
+    if (levelConfig && magnets.length > 0) {
+      var activePhysicsStates = [S.PLAYER_TURN, S.PLACING, S.AI_THINKING, S.AI_PLACING];
+      if (activePhysicsStates.indexOf(state) >= 0) {
+        var bgVel = Physics.step(magnets, levelConfig, { x: 0, y: 0 }, CONFIG.PHYSICS_DT);
+        // Check for clusters caused by ongoing magnetic drift
+        if (bgVel > CONFIG.SETTLE_VELOCITY_THRESHOLD * 2) {
+          var driftClusters = Physics.findClusters(magnets, levelConfig);
+          if (driftClusters.length > 0 && state !== S.PLACING) {
+            clusterGroup = driftClusters[0];
+            clusterAnimStart = time;
+            clusterOwner = currentTurn;
+            state = S.CLUSTER_ANIM;
+            Audio.cluster();
+            Haptics.clusterImpact();
+            Renderer.triggerShake(time * 1000);
+            message = "KLUSTER!";
+            messageColor = CONFIG.CLUSTER_GLOW;
+          }
+        }
+      }
+    }
 
     if (state === S.SETTLING) {
       var simDt = settleSlowMo ? CONFIG.PHYSICS_DT * CONFIG.SLOW_MOTION_FACTOR : CONFIG.PHYSICS_DT;
