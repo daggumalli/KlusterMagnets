@@ -103,24 +103,32 @@ const Physics = (function () {
       }
     }
 
+    // dt factor for slow-motion (1.0 = normal, 0.5 = slow-mo)
+    const dtScale = dt / CONFIG.PHYSICS_DT; // normalized to 1.0 at normal speed
+
     let maxVel = 0;
     for (let i = 0; i < placed.length; i++) {
       const m = placed[i];
       const friction = getSurfaceFriction(m.x, m.y, baseFriction, imperfection);
 
-      const newX = 2 * m.x - m.prevX + forces[i].fx * dt * dt;
-      const newY = 2 * m.y - m.prevY + forces[i].fy * dt * dt;
+      // Apply forces directly as velocity changes (semi-implicit Euler)
+      m.vx += forces[i].fx * dtScale;
+      m.vy += forces[i].fy * dtScale;
 
-      m.vx = (newX - m.x) * friction;
-      m.vy = (newY - m.y) * friction;
+      // Apply friction damping
+      m.vx *= friction;
+      m.vy *= friction;
 
+      // Update position
       m.prevX = m.x;
       m.prevY = m.y;
-      m.x = m.x + m.vx;
-      m.y = m.y + m.vy;
+      m.x += m.vx * dtScale;
+      m.y += m.vy * dtScale;
 
-      m.omega = (m.omega + forces[i].torque * dt) * friction;
-      m.theta += m.omega;
+      // Angular dynamics
+      m.omega += forces[i].torque * dtScale;
+      m.omega *= friction;
+      m.theta += m.omega * dtScale;
 
       const dxC = m.x - arenaCenter.x;
       const dyC = m.y - arenaCenter.y;

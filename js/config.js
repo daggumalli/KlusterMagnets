@@ -27,16 +27,16 @@ const CONFIG = {
   LEVELS: [
     {
       id: 1, name: "Rookie", description: "Learn the basics of magnetic placement",
-      magnetsEach: 4, arenaRadius: 155, magneticK: 0.08, surfaceFriction: 0.92,
+      magnetsEach: 4, arenaRadius: 155, magneticK: 50000, surfaceFriction: 0.92,
       magnetMassVariance: 0, surfaceImperfection: 0, polarityRandomization: 0,
-      magneticRange: 70, simSteps: 120, aiCandidates: 52, aiNoise: 0.5,
+      magneticRange: 100, simSteps: 120, aiCandidates: 52, aiNoise: 0.5,
       aiThinkTime: 1500, isTutorial: true,
     },
     {
       id: 2, name: "Novice", description: "Stronger pull, smarter opponent",
-      magnetsEach: 5, arenaRadius: 145, magneticK: 0.12, surfaceFriction: 0.90,
+      magnetsEach: 5, arenaRadius: 145, magneticK: 100000, surfaceFriction: 0.90,
       magnetMassVariance: 0.05, surfaceImperfection: 0.2, polarityRandomization: 0.15,
-      magneticRange: 78, simSteps: 140, aiCandidates: 58, aiNoise: 0.4,
+      magneticRange: 120, simSteps: 140, aiCandidates: 58, aiNoise: 0.4,
       aiThinkTime: 1200, isTutorial: false,
     },
   ],
