@@ -449,7 +449,5 @@ const Game = (function () {
     }
   }
 
-  init();
-
-  return { update: update, render: render };
+  return { init: init, update: update, render: render };
 })();

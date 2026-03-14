@@ -28,15 +28,16 @@
     getCenterX: () => centerX, getCenterY: () => centerY,
   };
 
+  // Initialize the game now that KLUSTER global is available
+  Game.init();
+
   let lastTime = 0;
   function loop(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
 
-    if (window.Game) {
-      Game.update(dt);
-      Game.render(ctx, W, H, sc);
-    }
+    Game.update(dt);
+    Game.render(ctx, W, H, sc);
 
     requestAnimationFrame(loop);
   }
@@ -45,6 +46,6 @@
 
   // Register service worker
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(function() {});
+    navigator.serviceWorker.register("sw.js").catch(function() {});
   }
 })();
