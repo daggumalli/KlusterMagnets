@@ -102,14 +102,20 @@ const Physics = (function () {
   const GRAVITY = 22;
   const MU_KINETIC = 0.30;           // kinetic friction (wood/cloth surface)
   const MU_STATIC  = 0.36;           // static friction (higher, prevents jitter)
-  const MU_ANGULAR = 0.15;           // angular friction coefficient
+  const MU_ANGULAR = 0.15;           // angular Coulomb friction coefficient
+
+  // Viscous damping: real magnets on cloth/felt have strong surface drag
+  // that prevents free spinning. This is the key to stable, non-jittery physics.
+  // Per-substep multiplier: 0.82^3 = 0.55 per frame → fast alignment
+  const ANGULAR_DAMPING = 0.82;      // viscous angular damping per substep
+  const LINEAR_DAMPING = 0.97;       // very mild linear viscous drag per substep
 
   const MAX_FORCE = 2000;            // cap to prevent explosion at very close range
-  const MAX_TORQUE = 800;            // torque cap
-  const MAX_VELOCITY = 250;          // px/s safety cap
-  const MAX_OMEGA = 20;              // rad/s angular velocity cap
+  const MAX_TORQUE = 600;            // torque cap (prevents instant spinning)
+  const MAX_VELOCITY = 200;          // px/s safety cap
+  const MAX_OMEGA = 8;              // rad/s cap (~1.3 rev/s max, realistic for surface)
   const VELOCITY_EPSILON = 0.3;      // below this, magnet is "stopped"
-  const OMEGA_EPSILON = 0.03;        // below this, rotation is "stopped"
+  const OMEGA_EPSILON = 0.02;        // below this, rotation is "stopped"
 
   // Derived thresholds with k=2e9 (2 billion):
   // Static friction force: μ*1.2 * m * g = 0.30*1.2*12*22 = 95 force units
@@ -246,13 +252,14 @@ const Physics = (function () {
 
           var result = calculateDipoleForces(placed[i], placed[j], k);
 
-          // Newton's 3rd law: equal and opposite
-          forces[i].fx += result.fx;
-          forces[i].fy += result.fy;
-          forces[i].torque += result.torqueA;
-          forces[j].fx -= result.fx;
-          forces[j].fy -= result.fy;
+          // calculateDipoleForces returns force ON B due to A.
+          // Newton's 3rd law: A gets the opposite force.
+          forces[j].fx += result.fx;
+          forces[j].fy += result.fy;
           forces[j].torque += result.torqueB;
+          forces[i].fx -= result.fx;
+          forces[i].fy -= result.fy;
+          forces[i].torque += result.torqueA;
         }
       }
 
@@ -296,6 +303,11 @@ const Physics = (function () {
           m.vx += ax * subDt;
           m.vy += ay * subDt;
 
+          // Viscous linear damping (surface drag, air resistance)
+          // Smooths out motion, prevents sharp direction changes
+          m.vx *= LINEAR_DAMPING;
+          m.vy *= LINEAR_DAMPING;
+
           // Velocity cap
           var newSpeed = Math.sqrt(m.vx * m.vx + m.vy * m.vy);
           if (newSpeed > MAX_VELOCITY) {
@@ -317,19 +329,28 @@ const Physics = (function () {
         m.y += m.vy * subDt;
 
         // --- ANGULAR DYNAMICS ---
-        // τ = I·α → α = τ/I
+        // Real magnets on a surface align quickly due to strong surface drag.
+        // We model this with:
+        //   1. Coulomb angular friction (constant, like surface resistance)
+        //   2. Viscous angular damping (proportional to ω, like cloth drag)
+        // This prevents wild spinning while allowing smooth alignment.
         var angAccel = forces[mi].torque / MOMENT_OF_INERTIA;
         var torqueMag = Math.abs(forces[mi].torque);
 
         // Static angular friction: won't rotate unless torque exceeds threshold
-        var angStaticThreshold = mu * mass * GRAVITY * 0.1;
+        var angStaticThreshold = mu * mass * GRAVITY * 0.15;
         if (Math.abs(m.omega) < OMEGA_EPSILON && torqueMag < angStaticThreshold) {
           m.omega = 0;
         } else {
           // Apply torque acceleration
           m.omega += angAccel * subDt;
 
-          // Angular kinetic friction (must use UPDATED omega, not stale value)
+          // Viscous angular damping (PRIMARY rotation control)
+          // Models the strong surface drag that prevents free spinning
+          // Terminal ω ≈ angAccel * subDt / (1 - ANGULAR_DAMPING) ≈ 2-3 rad/s
+          m.omega *= ANGULAR_DAMPING;
+
+          // Coulomb angular friction (secondary, for final settling)
           var updatedAbsOmega = Math.abs(m.omega);
           if (updatedAbsOmega > OMEGA_EPSILON) {
             var angFriction = MU_ANGULAR * GRAVITY;
