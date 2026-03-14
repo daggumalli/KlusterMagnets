@@ -1,4 +1,4 @@
-var CACHE_NAME = "kluster-v1";
+var CACHE_NAME = "kluster-v2";
 var ASSETS = [
   "/index.html",
   "/css/style.css",
@@ -20,7 +20,11 @@ self.addEventListener("install", function(e) {
 
 self.addEventListener("fetch", function(e) {
   e.respondWith(
-    caches.match(e.request).then(function(r) { return r || fetch(e.request); })
+    fetch(e.request).then(function(r) {
+      var clone = r.clone();
+      caches.open(CACHE_NAME).then(function(c) { c.put(e.request, clone); });
+      return r;
+    }).catch(function() { return caches.match(e.request); })
   );
 });
 

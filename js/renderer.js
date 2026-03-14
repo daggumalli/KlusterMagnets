@@ -93,71 +93,124 @@ const Renderer = (function () {
     ctx.stroke();
   }
 
+  function capsulePath(ctx, halfW, halfH, cornerR) {
+    ctx.beginPath();
+    ctx.moveTo(-halfW + cornerR, -halfH);
+    ctx.lineTo(halfW - cornerR, -halfH);
+    ctx.arcTo(halfW, -halfH, halfW, -halfH + cornerR, cornerR);
+    ctx.lineTo(halfW, halfH - cornerR);
+    ctx.arcTo(halfW, halfH, halfW - cornerR, halfH, cornerR);
+    ctx.lineTo(-halfW + cornerR, halfH);
+    ctx.arcTo(-halfW, halfH, -halfW, halfH - cornerR, cornerR);
+    ctx.lineTo(-halfW, -halfH + cornerR);
+    ctx.arcTo(-halfW, -halfH, -halfW + cornerR, -halfH, cornerR);
+    ctx.closePath();
+  }
+
   function drawMagnet(ctx, magnet, cx, cy, sc, time, isGhost, dangerLevel) {
     const x = cx + magnet.x * sc;
     const y = cy + magnet.y * sc;
     const r = CONFIG.MAGNET_RADIUS * sc;
-    const colors = magnet.team === "player" ? CONFIG.PLAYER_COLOR : CONFIG.AI_COLOR;
+    var colors = magnet.team === "player" ? CONFIG.PLAYER_COLOR : CONFIG.AI_COLOR;
+
+    // Capsule dimensions — elongated pill shape like real Kluster magnets
+    var halfW = r * 0.65;
+    var halfH = r * 1.3;
+    var cornerR = halfW * 0.85;
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(magnet.theta);
 
-    const alpha = isGhost ? 0.4 : 1.0;
+    var alpha = isGhost ? 0.4 : 1.0;
     ctx.globalAlpha = alpha;
 
+    // Shadow
     if (!isGhost) {
-      ctx.beginPath();
-      ctx.arc(2 * sc, 3 * sc, r, 0, Math.PI * 2);
+      ctx.save();
+      ctx.translate(2 * sc, 3 * sc);
+      capsulePath(ctx, halfW, halfH, cornerR);
       ctx.fillStyle = "rgba(0,0,0,0.3)";
       ctx.fill();
+      ctx.restore();
     }
 
-    const baseGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
-    baseGrad.addColorStop(0, colors.light);
-    baseGrad.addColorStop(0.6, colors.base);
+    // Main body gradient
+    var baseGrad = ctx.createLinearGradient(-halfW, 0, halfW, 0);
+    baseGrad.addColorStop(0, colors.dark);
+    baseGrad.addColorStop(0.3, colors.light);
+    baseGrad.addColorStop(0.7, colors.base);
     baseGrad.addColorStop(1, colors.dark);
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    capsulePath(ctx, halfW, halfH, cornerR);
     ctx.fillStyle = baseGrad;
     ctx.fill();
 
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.75, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    // Subtle rim stroke
+    capsulePath(ctx, halfW, halfH, cornerR);
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    // Specular highlight along the top
     ctx.beginPath();
-    ctx.ellipse(-r * 0.25, -r * 0.3, r * 0.35, r * 0.2, -0.5, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.ellipse(0, -halfH * 0.3, halfW * 0.5, halfH * 0.25, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
     ctx.fill();
 
+    // Dividing line between poles (center seam)
     ctx.beginPath();
-    ctx.arc(0, 0, r - 1, 0.3, Math.PI * 1.2);
-    ctx.strokeStyle = "rgba(0,0,0,0.2)";
-    ctx.lineWidth = 2 * sc;
+    ctx.moveTo(-halfW, 0);
+    ctx.lineTo(halfW, 0);
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 1.5 * sc;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-halfW, -1);
+    ctx.lineTo(halfW, -1);
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 0.5;
     ctx.stroke();
 
-    const poleR = r * 0.12;
+    // North pole marker (top half — lighter)
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(0, -r * 0.5, poleR, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.rect(-halfW, -halfH, halfW * 2, halfH);
+    ctx.clip();
+    capsulePath(ctx, halfW, halfH, cornerR);
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
     ctx.fill();
+    ctx.restore();
+
+    // South pole marker (bottom half — darker)
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(0, r * 0.5, poleR, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.rect(-halfW, 0, halfW * 2, halfH);
+    ctx.clip();
+    capsulePath(ctx, halfW, halfH, cornerR);
+    ctx.fillStyle = "rgba(0,0,0,0.1)";
     ctx.fill();
+    ctx.restore();
+
+    // Pole labels
+    ctx.font = "bold " + Math.round(halfW * 0.7) + "px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillText("N", 0, -halfH * 0.5);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillText("S", 0, halfH * 0.5);
 
     ctx.globalAlpha = 1.0;
     ctx.restore();
 
+    // Danger glow for ghost magnet
     if (isGhost && dangerLevel > 0) {
       ctx.save();
-      const pulseAlpha = 0.1 + dangerLevel * 0.3 * (0.5 + 0.5 * Math.sin(time * dangerLevel * 20));
-      ctx.beginPath();
-      ctx.arc(x, y, r + 5 * sc, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,50,50,${pulseAlpha})`;
+      var pulseAlpha = 0.1 + dangerLevel * 0.3 * (0.5 + 0.5 * Math.sin(time * dangerLevel * 20));
+      ctx.translate(x, y);
+      ctx.rotate(magnet.theta);
+      capsulePath(ctx, halfW + 5 * sc, halfH + 5 * sc, cornerR + 3 * sc);
+      ctx.fillStyle = "rgba(255,50,50," + pulseAlpha + ")";
       ctx.fill();
       ctx.restore();
     }
